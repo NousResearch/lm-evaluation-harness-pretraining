@@ -48,6 +48,8 @@ MODEL_MAPPING = {
     "sglang-generate": "lm_eval.models.sglang_generate_API:SGAPI",
     "steered": "lm_eval.models.hf_steered:SteeredHF",
     "textsynth": "lm_eval.models.textsynth:TextSynthLM",
+    "torchtitan": "lm_eval.models.torchtitan_lm:TorchTitanLM",
+    "tt": "lm_eval.models.torchtitan_lm:TorchTitanLM",
     "vllm": "lm_eval.models.vllm_causallms:VLLM",
     "vllm-vlm": "lm_eval.models.vllm_vlms:VLLM_VLM",
     "watsonx_llm": "lm_eval.models.ibm_watsonx_ai:IBMWatsonxAI",
