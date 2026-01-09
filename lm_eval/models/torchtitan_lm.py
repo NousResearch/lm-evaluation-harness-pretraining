@@ -155,12 +155,53 @@ class TorchTitanLM(TemplateLM):
     def _load_checkpoint(self, checkpoint_path: str, model_name: str):
         """Load checkpoint from file or directory."""
         if os.path.isdir(checkpoint_path):
-            # HuggingFace safetensors directory
-            self._load_hf_checkpoint(checkpoint_path, model_name)
+            # Check if it's a DCP (Distributed Checkpoint) format
+            if self._is_dcp_checkpoint(checkpoint_path):
+                self._load_dcp_checkpoint(checkpoint_path)
+            else:
+                # HuggingFace safetensors directory
+                self._load_hf_checkpoint(checkpoint_path, model_name)
         else:
             # Standard PyTorch checkpoint
             state_dict = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
             self.model.load_state_dict(state_dict)
+
+    def _is_dcp_checkpoint(self, checkpoint_dir: str) -> bool:
+        """Check if the directory contains a DCP (Distributed Checkpoint) format checkpoint."""
+        # DCP checkpoints have a .metadata file and .distcp files
+        has_metadata = os.path.exists(os.path.join(checkpoint_dir, ".metadata"))
+        has_distcp = any(f.endswith(".distcp") for f in os.listdir(checkpoint_dir))
+        # Also check it's not an HF checkpoint (no safetensors)
+        has_safetensors = any(f.endswith(".safetensors") for f in os.listdir(checkpoint_dir))
+        return has_metadata and has_distcp and not has_safetensors
+
+    def _load_dcp_checkpoint(self, checkpoint_dir: str):
+        """Load a torchtitan DCP (Distributed Checkpoint) format checkpoint."""
+        import torch.distributed.checkpoint as dcp
+
+        eval_logger.info(f"Loading DCP checkpoint from {checkpoint_dir}")
+
+        # torchtitan saves model weights without "model." prefix directly
+        # e.g., tok_embeddings.weight, layers.0.attention.wq.weight, etc.
+        # So we load directly into the model's state dict
+        state_dict = self.model.state_dict()
+
+        try:
+            # Try loading with the newer API
+            dcp.load(
+                state_dict=state_dict,
+                checkpoint_id=checkpoint_dir,
+            )
+        except TypeError:
+            # Fallback for older PyTorch versions
+            dcp.load_state_dict(
+                state_dict=state_dict,
+                storage_reader=dcp.FileSystemReader(checkpoint_dir),
+            )
+
+        # Load the model state dict
+        self.model.load_state_dict(state_dict)
+        eval_logger.info(f"Successfully loaded DCP checkpoint")
 
     def _load_hf_checkpoint(self, checkpoint_dir: str, model_name: str):
         """Load HuggingFace safetensors checkpoint with state dict conversion."""
